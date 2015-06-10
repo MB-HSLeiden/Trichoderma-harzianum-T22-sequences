@@ -1,1 +1,155 @@
 
+#/usr/bin/python
+
+from os import system as Bash
+from sys import argv, exit
+from time import strftime
+
+
+
+    
+"""
+Checkt of de opgegeven parameters meegestuurd zijn en geeftindien dit 
+niet gebeurd is de vragen bij toonlijst
+"""
+def check(cs_waarde):
+    toonlijst = ["De filenaam is niet meegegeven.\nGeef filenaam: ",
+                 50, 100]
+    try:
+        if cs_waarde > 0:
+            return int(argv[cs_waarde+1])
+        else:
+            return argv[cs_waarde+1]
+    except IndexError:
+        if cs_waarde == 0:
+            return raw_input(toonlijst[cs_waarde])
+        else:
+            return toonlijst[cs_waarde]
+
+
+
+zoek_seq = check(0)
+e_value = check(1)
+primer_len = check(2)
+logboek = "logboek_%s"%(zoek_seq)
+
+"""
+Opent altijd de file genaamd a en keert de inhoud als een lijst terug
+als de fo_waarde 0 is dan creert de script de file a vanuit de lijst 
+met opgegeven waarden
+"""
+def file_open(fo_file,fo_waarde):
+    if fo_waarde == 0:
+        Bash("ls %s > a"%(fo_file))
+    infile = open("a","r")
+    inlines = infile.readlines()
+    infile.close()
+    return inlines
+
+def primer_bepaal(pb_file,pb_list):
+    Bash("egrep '>' -n < %s > a"%(pb_file))
+    waarde1 = int(pb_list[9])
+    waarde2 = int(pb_list[8])
+    if waarde2 - waarde1 < 0:
+        waarde1 = int(pb_list[8])
+        waarde2 = int(pb_list[9])    
+    findlines = file_open("",1)
+    for x in range(0,len(findlines)-1):
+        if pb_list[1] in findlines[x]:
+            Bash("""egrep -w %s -A %s < %s | egrep -v '>' | tr -d '\\n' | cut -c %s-%s | 
+            awk '{print "%s:\\n"substr($0,0,%s)tolower(substr($0,%s,(length()-%s)))substr($0,length()-%s,%s)}' >> %s"""%
+                  (pb_list[1],int(findlines[x+1].split(":")[0])-int(findlines[x].split(":")[0]),
+                   pb_file,waarde1-primer_len,waarde2+primer_len,pb_file.split(".")[0],primer_len,primer_len+1,
+                   primer_len*2,primer_len-1,primer_len,logboek))
+            break
+
+
+"""
+checkt of de verkregen waarde < dan de opgegeven E-value 
+"""
+def check_file():
+    cf_line = file_open("",1)
+    cf_number = cf_line[0].split()[-2]
+    if cf_number == "0.0":
+        return True
+    elif "-" in cf_number and int(cf_number.split("-")[-1]) > e_value:
+        return True
+    else:
+        return False
+
+
+def blast(b_fastafile):
+    try:
+        print(b_fastafile)
+        Bash("formatdb -pF -i %s"%(b_fastafile))
+        Bash("blastall -p tblastn -i %s -d %s -m8 -b1 > a 2>> Errorfile "%
+                (zoek_seq,b_fastafile))
+        Bash("echo Blastresultaten: >> d")
+        Bash("echo ----------- %s -----------  >> d "%(b_fastafile))
+        if check_file() == True:
+            Bash("echo Wel significant blastresultaat: >> d")
+            Bash("echo >> d")            
+            Bash("cat a >> d ")
+            Bash("echo >> d")            
+            Bash("echo Hieronder volgt de uitgebreide resultaat: >> d ")
+            Bash("echo >> d")            
+            Bash("blastall -p tblastn -i %s -d %s -b1 | tail -n +24 >> d 2>> Errorfile"%
+                (zoek_seq,b_fastafile))
+            Bash("head -n3 %s | tail -n 1 | wc -m >> a"%(b_fastafile))
+            nodigline = file_open("",1)
+            primer_bepaal(b_fastafile,"".join(nodigline).split())
+        else:
+            Bash("echo Geen significant blastresultaat: >> d")
+            Bash("echo >> d")            
+            Bash("cat a >> d ")
+            Bash("echo >> d")            
+        Bash("echo  >> d")
+        Bash("rm %s.*"%(b_fastafile))
+    except IndexError:
+        exit("Onbekende filenaam")
+
+
+def aanmaak_log():
+
+    log = ["Logboek gegenereerd op ", "Gezochte sequentie file: ",
+       "E-value cuttoff: 1e-",
+       "Aantal primerbasen voor primers (weergegeven in hoofdletters): ",
+       """De sequenties welke een hit leveren zullen eerst getoond worden.
+De hoofdletters geven de primer gedeelten weer, terwijl de kleine letters de
+de sequentie weergeeft.
+"""]
+    Bash('echo "%s%s.\n%s%s.\n%s%s\n%s%s\n%s"> %s'%(log[0],
+            strftime("%a, %d %b %Y %H:%M:%S"), log[1], zoek_seq, log[2],
+            e_value, log[3], primer_len, log[4], logboek))
+
+"""
+de main functie 
+"""
+def main():
+    Bash("echo > d")
+    aanmaak_log()
+    Bash("rm logfile 2>> Errorfile")
+    fastas = file_open("*.fasta",0)
+    for line in fastas:
+        blast(line[:-1])
+    Bash("cat d >> %s"%(logboek))
+#Bash ("cat awk '{{a=0; b=0}; if ($9<$10) {b=($10+100); a=$9} else {a=($9-100);b=$10}; print $2,a/70,b/70}'| tr "." " " | awk '{printf  "egrep -w %s -A %s < Triha1_AssemblyScaffolds.fasta ")
+      
+      
+
+
+main()
+
+"""
+blastall -p tblastn -i aox1 -d Triha1_AssemblyScaffolds.fasta -m8 -b1 | awk '{{a=0; b=0}; if ($9<$10) {b=($10+100); a=$9} else {a=($9-100);b=$10}; print $2,a/70,b/70}'| tr "." " " |
+awk '{printf  "egrep -w %s -A %s < Triha1_AssemblyScaffolds.fasta | tail -n %s \n", $1, $4, $4-$2}' > b
+
+
+Triha1_AssemblyScaffolds.fasta
+scaffold_10 24 4152 4 66 66
+
+
+
+
+
+"""
